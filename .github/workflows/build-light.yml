@@ -1,0 +1,52 @@
+name: Build and Release Velxio Light
+
+on:
+  workflow_dispatch: # 允许手动触发
+    inputs:
+      tag_name:
+        description: '发布版本号 (Tag，例如 v1.0-light)'
+        required: true
+        default: 'v1.0-light'
+
+# 必须要有写入权限，才能创建 Release
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (export to tar)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.standalone
+          tags: velxio:light
+          # 导出为本地 tar 文件
+          outputs: type=docker,dest=${{ runner.temp }}/velxio.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compress image
+        run: |
+          cd ${{ runner.temp }}
+          # 使用 gzip 压缩，减小下载体积
+          gzip -9 velxio.tar
+          ls -lh velxio.tar.gz
+
+      - name: Create Release and Upload Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          # 使用你在触发时填写的版本号作为 Tag
+          tag_name: ${{ github.event.inputs.tag_name }}
+          name: Release ${{ github.event.inputs.tag_name }}
+          draft: false
+          prerelease: false
+          # 将压缩包作为附件上传
+          files: ${{ runner.temp }}/velxio.tar.gz
