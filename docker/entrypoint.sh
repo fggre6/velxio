@@ -12,36 +12,7 @@ if [ -z "$SECRET_KEY" ]; then
     export SECRET_KEY="$(cat "$SECRET_FILE")"
 fi
 
-# Ensure arduino-cli config and board manager URLs are set up
-# 裁剪说明：移除了 ESP32 和 RP2040 的板卡源，只保留基础 AVR 系列
-if [ ! -f /root/.arduino15/arduino-cli.yaml ]; then
-    echo "📦 Initializing arduino-cli config..."
-    arduino-cli config init 2>/dev/null || true
-    # ATTinyCore (Spence Konde) — needed for ATtiny85 FQBNs.
-    arduino-cli config add board_manager.additional_urls \
-        http://drazzy.com/package_drazzy.com_index.json 2>/dev/null || true
-fi
-
-# Seed board-manager indexes vendored into the image
-if [ -d /opt/arduino15-seed ]; then
-    for seed in /opt/arduino15-seed/package_*.json; do
-        [ -f "$seed" ] || continue
-        dest="/root/.arduino15/$(basename "$seed")"
-        if [ ! -f "$dest" ]; then
-            echo "Seeding board index $(basename "$seed") (missing from volume)"
-            cp "$seed" "$dest"
-        fi
-    done
-fi
-
-# Install missing cores.
-# 裁剪说明：只安装最基础的 AVR（如 Arduino Uno/Nano）和 ATTiny，彻底移除 ESP32、RP2040 和 STM32。
-echo "📦 Installing basic Arduino cores..."
-arduino-cli core update-index 2>/dev/null || true
-arduino-cli core install arduino:avr 2>/dev/null || true
-arduino-cli core install ATTinyCore:avr@1.4.1 2>/dev/null || true
-
-# 裁剪说明：完全移除了 ESP-IDF 加载逻辑和 ESP32 core 的回退安装逻辑。
+# 【已彻底移除 Arduino 编译器的初始化和下载逻辑】
 # 你的自定义芯片将通过 WASI-SDK 编译，不受影响。
 
 # Start FastAPI backend in the background on port 8001
