@@ -30,9 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir packaging
 
-# 保留 arduino-cli（为了兼容基础的 AVR 编译功能，体积很小）
-RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
-    | BINDIR=/usr/local/bin sh
+# [已移除 arduino-cli 安装，彻底告别单片机编译]
 
 # ---- WASI-SDK: the custom-chip compiler (必须保留) ----
 ARG WASI_SDK_VERSION=22
@@ -53,8 +51,7 @@ RUN set -eu; \
       echo "[wasi-sdk] no official wasi-sdk ${WASI_SDK_VERSION} build for $arch - custom chip compilation will report available:false"; \
     fi
 
-# 保留 board-indexes 种子文件
-COPY backend/board-indexes/package_*.json /opt/arduino15-seed/
+# [已移除 board-indexes 种子文件复制]
 
 WORKDIR /app
 
@@ -80,11 +77,11 @@ COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-# 创建必要的目录 (保留 ccache 目录以防后端有硬编码检查)
-RUN mkdir -p /var/cache/ccache /root/Arduino
+# 创建必要的目录 (只保留 ccache)
+RUN mkdir -p /var/cache/ccache
 
-# 卷挂载配置
-VOLUME ["/app/data", "/root/.arduino15", "/root/Arduino"]
+# 卷挂载配置 (只保留数据目录)
+VOLUME ["/app/data"]
 
 EXPOSE 80
 
