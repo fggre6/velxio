@@ -1,0 +1,36 @@
+name: Build Velxio Light
+on:
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.standalone
+          tags: velxio:light
+          outputs: type=docker,dest=${{ runner.temp }}/velxio.tar
+          # 开启缓存，如果构建失败重试，能省很多时间
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Compress image
+        run: |
+          cd ${{ runner.temp }}
+          gzip -9 velxio.tar
+          
+      - name: Upload image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: velxio-image
+          path: ${{ runner.temp }}/velxio.tar.gz
+          retention-days: 7
