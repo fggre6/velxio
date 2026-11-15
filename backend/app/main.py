@@ -3,6 +3,9 @@ import sys
 import asyncio
 from contextlib import asynccontextmanager
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
+
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(name)s: %(message)s')
 
 # On Windows, asyncio defaults to SelectorEventLoop which does NOT support
@@ -11,6 +14,7 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -18,6 +22,7 @@ from app.api.routes import compile, compile_chip, compile_rom, flash, intellisen
 from app.core.config import settings
 from app.core.hooks import run_lifespan_startup
 from app.core.hooks import health_detail, health_probe
+from app.core import paths
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +94,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Desktop shell: the SPA is same-origin, but the injected absolute API
+    # base and the WebSocket bridge can arrive from a loopback origin whose
+    # port changes on every launch.
+    allow_origin_regex=r"http://127\.0\.0\.1:\d+",
 )
 
 # Include routers
@@ -157,8 +166,14 @@ try:
 except ImportError:
     pass
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def root():
+    # Desktop/standalone: FastAPI itself serves the built SPA, so `/` must
+    # return index.html instead of the API banner. API-only deployments
+    # (no frontend/dist) keep the historical JSON response.
+    dist = paths.frontend_dist_dir()
+    if dist is not None:
+        return FileResponse(dist / "index.html")
     return {
         "message": "Arduino Emulator API",
         "version": "1.0.0",
@@ -185,9 +200,35 @@ def health_check():
 @app.get("/health/libcache")
 def health_libcache():
     """Operator detail for the overlay's library set: missing keys, gauges,
-    seed timings. Served by uvicorn only; the internal nginx does not proxy
-    this path, so from outside it falls through to the SPA. OSS: no overlay,
-    nothing to detail."""
+    seed timings. OSS: no overlay, nothing to detail."""
     detail = health_detail()
     return detail if detail is not None else {"status": "healthy", "overlay": "oss"}
+
+
+class SPAStaticFiles(StaticFiles):
+    """StaticFiles with an index.html fallback for client-side routes.
+
+    `/api/*` is never rewritten: an unknown API path must stay a 404 JSON
+    error instead of quietly returning the SPA shell.
+    """
+
+    async def get_response(self, path: str, scope):  # type: ignore[override]
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not path.startswith("api/"):
+                return await super().get_response("index.html", scope)
+            raise
+
+
+# Desktop / standalone: FastAPI serves the Vite build directly (no nginx).
+# Mounted last so every /api route and /health above keeps precedence.
+_frontend_dist = paths.frontend_dist_dir()
+if _frontend_dist is not None:
+    app.mount("/", SPAStaticFiles(directory=str(_frontend_dist), html=True), name="frontend")
+else:
+    logger.warning(
+        "frontend dist not found (looked for VELXIO_FRONTEND_DIST / "
+        "sys._MEIPASS/frontend_dist / frontend/dist); serving API only"
+    )
 

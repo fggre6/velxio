@@ -281,6 +281,12 @@ class ArduinoCLIService:
     }
 
     def __init__(self, cli_path: str = "arduino-cli"):
+        # Desktop bundles intentionally ship without arduino-cli (matching the
+        # light standalone image). A user-installed binary on PATH must not be
+        # picked up: its startup core sync would make the offline app talk to
+        # downloads.arduino.cc.
+        if os.environ.get("VELXIO_ARDUINO_CLI_DISABLED", "").lower() in {"1", "true", "yes"}:
+            cli_path = "__velxio_arduino_cli_disabled__"
         self.cli_path = cli_path
         # Cached `core list` output; see _is_core_installed. Invalidated
         # wherever a core is installed so a fresh install is seen immediately.

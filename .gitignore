@@ -10,6 +10,10 @@ node_modules/
 # pinned by package.json's version ranges + the image tag. See npm/cli#4828.
 package-lock.json
 **/package-lock.json
+# ...except the frontend lockfile: the Windows CI uses `npm ci`, which
+# requires a committed lockfile. Generated on Linux via
+# `npm install --package-lock-only`; it carries all platform optional deps.
+!frontend/package-lock.json
 
 # Python
 __pycache__/

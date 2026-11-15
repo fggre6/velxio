@@ -18,9 +18,17 @@
 
 export function getApiBase(): string {
   if (typeof window !== 'undefined') {
-    const w = window as { __VELXIO_API_BASE__?: string };
+    const w = window as {
+      __VELXIO_API_BASE__?: string;
+      __VELXIO_BACKEND__?: string;
+    };
     if (typeof w.__VELXIO_API_BASE__ === 'string' && w.__VELXIO_API_BASE__) {
       return w.__VELXIO_API_BASE__.replace(/\/+$/, '');
+    }
+    // The Tauri shell injects the backend root (no /api suffix) so the
+    // renderer does not need to know the dynamically chosen port.
+    if (typeof w.__VELXIO_BACKEND__ === 'string' && w.__VELXIO_BACKEND__) {
+      return `${w.__VELXIO_BACKEND__.replace(/\/+$/, '')}/api`;
     }
   }
   const fromEnv = import.meta.env.VITE_API_BASE;
@@ -33,5 +41,6 @@ export function getApiBase(): string {
 declare global {
   interface Window {
     __VELXIO_API_BASE__?: string;
+    __VELXIO_BACKEND__?: string;
   }
 }

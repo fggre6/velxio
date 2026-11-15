@@ -8,7 +8,7 @@ the pro overlay's cache naming rules; this module never imports app.pro.
 Two library layouts answer this endpoint, in that order:
 
   1. The content-addressed library cache (VELXIO_LIBCACHE_DIR, default
-     /var/velxio/libcache — entry dirs named `<norm_name>@<norm_version>-
+     %APPDATA%\\Velxio\\libcache — entry dirs named `<norm_name>@<norm_version>-
      <sha12>`). Immutable by construction, so a scan cached under an entry
      name can never go stale and the response is safe to cache hard.
   2. A plain arduino-cli sketchbook `libraries/` dir — what Velxio Desktop's
@@ -36,6 +36,7 @@ from typing import NamedTuple, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from app.core import paths
 from app.services.symbol_extract import (
     _entry_version_key,
     _read_props,
@@ -67,7 +68,7 @@ class _Source(NamedTuple):
 def _cache_root() -> Path:
     """Resolved per-request so tests (and container reconfigs) can point the
     endpoint elsewhere via the environment."""
-    return Path(os.environ.get("VELXIO_LIBCACHE_DIR", "/var/velxio/libcache"))
+    return Path(os.environ.get("VELXIO_LIBCACHE_DIR", str(paths.libcache_dir())))
 
 
 # arduino-cli's own sketchbook, asked once and remembered: on the desktop

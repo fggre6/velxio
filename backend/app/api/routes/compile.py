@@ -28,6 +28,7 @@ from app.services import build_queue
 from app.services import espidf_compiler as espidf_compiler_module
 from app.services.arduino_cli import ArduinoCLIService
 from app.services.espidf_compiler import espidf_compiler
+from app.core import paths
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ JOB_TTL_S = 1800  # purge results 30 min after completion
 # first build can serve everyone. Results are stored under the build volume,
 # keyed by the same content hash the dedup uses.
 ARTIFACT_CACHE_DIR = Path(
-    os.environ.get("VELXIO_ARTIFACT_CACHE", "/var/lib/velxio-build/artifacts")
+    os.environ.get("VELXIO_ARTIFACT_CACHE", str(paths.artifact_cache_dir()))
 )
 
 

@@ -95,14 +95,9 @@
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- ═══════════════════════════════════════════════
-         PRECONNECT (speed up external resources)
-    ═══════════════════════════════════════════════ -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="dns-prefetch" href="https://github.com" />
-    <link rel="dns-prefetch" href="https://discord.com" />
-
-    <!-- ═══════════════════════════════════════════════
          WEBFONTS — self-hosted, preloaded
+         (No external font/CDN preconnect: the desktop build must not touch
+         the network at startup.)
     ═══════════════════════════════════════════════ -->
     <link rel="preload" as="font" type="font/woff2" href="/fonts/Inter.var.woff2" crossorigin />
     <link rel="preload" as="font" type="font/woff2" href="/fonts/JetBrainsMono.var.woff2" crossorigin />

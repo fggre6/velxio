@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the Velxio main window (served over http://127.0.0.1:<port>).",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:*"]
+  },
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "process:default"
+  ]
+}
