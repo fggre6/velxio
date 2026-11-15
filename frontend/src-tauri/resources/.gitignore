@@ -1,0 +1,11 @@
+# Python backend (PyInstaller onedir output, populated by CI)
+backend/*
+!backend/.gitkeep
+
+# WASI-SDK 22.0 Windows x64 (populated by CI)
+wasi-sdk/*
+!wasi-sdk/.gitkeep
+
+# SDCC Windows build (populated by CI)
+sdcc/*
+!sdcc/.gitkeep

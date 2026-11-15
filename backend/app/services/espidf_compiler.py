@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional
 
+from app.core import paths
 from app.core.hooks import materialize_library_scope, scope_retry_allowed
 
 logger = logging.getLogger(__name__)
@@ -311,7 +312,7 @@ def _advance_changed_inputs(project_dir: Path) -> int:
 # Set VELXIO_PERSISTENT_BUILD_DIR=0 to fall back to the legacy tempfile flow
 # without rebuilding the image (escape hatch if the persistent dir misbehaves
 # in production).
-_BUILD_ROOT = Path(os.environ.get('VELXIO_BUILD_ROOT', '/var/lib/velxio-build'))
+_BUILD_ROOT = Path(os.environ.get('VELXIO_BUILD_ROOT', str(paths.build_dir())))
 _USE_PERSISTENT_DIR = (
     os.environ.get('VELXIO_PERSISTENT_BUILD_DIR', '1')
     not in ('0', 'false', 'False', '')

@@ -25,7 +25,16 @@ import shutil
 import sys
 import tempfile
 
-CACHE_DIR = os.environ.get("VELXIO_LDGEN_CACHE", "/var/lib/velxio-build/.ldgen-cache")
+
+def _default_cache_dir() -> str:
+    build_root = os.environ.get("VELXIO_BUILD_ROOT")
+    if not build_root:
+        appdata = os.environ.get("APPDATA") or os.path.expanduser("~")
+        build_root = os.path.join(appdata, "Velxio", "build")
+    return os.path.join(build_root, ".ldgen-cache")
+
+
+CACHE_DIR = os.environ.get("VELXIO_LDGEN_CACHE") or _default_cache_dir()
 MAX_ENTRIES = 64
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _UPSTREAM = os.path.join(_HERE, "ldgen_upstream.py")

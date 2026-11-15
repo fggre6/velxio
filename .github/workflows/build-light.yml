@@ -1,52 +1,151 @@
-name: Build and Release Velxio Light
+name: Build Velxio Windows Desktop
+
+# Offline Windows x64 installer: Tauri 2 + NSIS + embedded WebView2 offline
+# installer, with a PyInstaller onedir backend and a bundled WASI-SDK.
+# No Docker, no WSL, no Linux runners.
 
 on:
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
     inputs:
       tag_name:
-        description: '发布版本号 (Tag，例如 v1.0-light)'
+        description: "Release tag to publish (e.g. v3.0.0)"
         required: true
-        default: 'v1.0-light'
+        type: string
+  push:
+    tags:
+      - "v*"
 
-# 必须要有写入权限，才能创建 Release
 permissions:
   contents: write
 
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WASI_SDK_URL: https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0.m-mingw64.tar.gz
+  WASI_SDK_SHA256: 723f2c4d00b37cb3d1039c080184c58e8bad71aa6dd1a700ead88a07e0f1f446
+  RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image (export to tar)
-        uses: docker/build-push-action@v6
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
         with:
-          context: .
-          file: ./Dockerfile.standalone
-          tags: velxio:light
-          # 导出为本地 tar 文件
-          outputs: type=docker,dest=${{ runner.temp }}/velxio.tar
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-      - name: Compress image
+      - name: Build frontend (desktop mode)
+        working-directory: frontend
         run: |
-          cd ${{ runner.temp }}
-          # 使用 gzip 压缩，减小下载体积
-          gzip -9 velxio.tar
-          ls -lh velxio.tar.gz
+          npm ci
+          npm run build:desktop
 
-      - name: Create Release and Upload Asset
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt pyinstaller
+
+      - name: Build backend (PyInstaller onedir)
+        run: |
+          pyinstaller --noconfirm --clean --distpath backend/dist --workpath backend/build backend/velxio-backend.spec
+          if (-not (Test-Path backend/dist/velxio-backend/velxio-backend.exe)) {
+            throw "PyInstaller did not produce velxio-backend.exe"
+          }
+        shell: pwsh
+
+      - name: Stage backend into Tauri resources
+        shell: pwsh
+        run: |
+          $dst = "frontend/src-tauri/resources/backend"
+          Get-ChildItem $dst -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item "backend/dist/velxio-backend/*" $dst -Recurse -Force
+          if (-not (Test-Path "$dst/velxio-backend.exe")) {
+            throw "backend resources staging failed"
+          }
+
+      - name: Download and verify WASI-SDK 22 (Windows x64)
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "wasi-sdk-22.0.m-mingw64.tar.gz"
+          Invoke-WebRequest -Uri $env:WASI_SDK_URL -OutFile $archive
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          Write-Host "WASI-SDK SHA256: $actual"
+          if ($actual -ne $env:WASI_SDK_SHA256) {
+            throw "WASI-SDK checksum mismatch: $actual"
+          }
+          $extract = Join-Path $env:RUNNER_TEMP "wasi-sdk"
+          New-Item -ItemType Directory -Force $extract | Out-Null
+          tar -xzf $archive -C $extract
+          $root = Get-ChildItem $extract -Directory | Select-Object -First 1
+          if (-not $root) { throw "WASI-SDK archive has no root directory" }
+          $dst = "frontend/src-tauri/resources/wasi-sdk"
+          Get-ChildItem $dst -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item (Join-Path $root.FullName "*") $dst -Recurse -Force
+          if (-not (Test-Path "$dst/bin/clang.exe")) {
+            throw "WASI-SDK layout invalid: bin/clang.exe missing"
+          }
+          if (-not (Test-Path "$dst/share/wasi-sysroot")) {
+            throw "WASI-SDK layout invalid: share/wasi-sysroot missing"
+          }
+
+      - name: Bundle SDCC (Windows x64)
+        shell: pwsh
+        run: |
+          choco install sdcc -y --no-progress
+          $sdccExe = Get-ChildItem "C:\ProgramData\chocolatey\lib\sdcc" -Recurse -Filter sdcc.exe |
+            Select-Object -First 1
+          if (-not $sdccExe) { throw "sdcc.exe not found after choco install" }
+          $root = $sdccExe.Directory.Parent.FullName
+          $dst = "frontend/src-tauri/resources/sdcc"
+          Get-ChildItem $dst -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item (Join-Path $root "*") $dst -Recurse -Force
+          if (-not (Test-Path "$dst/bin/sdcc.exe")) {
+            throw "SDCC staging failed: bin/sdcc.exe missing"
+          }
+
+      - name: Build Tauri app + NSIS installer
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run tauri build
+
+      - name: Package installer and checksums
+        id: package
+        shell: pwsh
+        run: |
+          if (-not $env:RELEASE_TAG) { throw "RELEASE_TAG is empty" }
+          $setup = Get-ChildItem "frontend/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" |
+            Select-Object -First 1
+          if (-not $setup) { throw "NSIS installer not found" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $name = "Velxio_$($env:RELEASE_TAG)_x64-setup.exe"
+          $out = Join-Path "dist" $name
+          Copy-Item $setup.FullName $out -Force
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Set-Content "dist/SHA256SUMS.txt" -Encoding ascii
+          "setup=$out" >> $env:GITHUB_OUTPUT
+          "sums=dist/SHA256SUMS.txt" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # 使用你在触发时填写的版本号作为 Tag
-          tag_name: ${{ github.event.inputs.tag_name }}
-          name: Release ${{ github.event.inputs.tag_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Velxio ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: false
-          # 将压缩包作为附件上传
-          files: ${{ runner.temp }}/velxio.tar.gz
+          fail_on_unmatched_files: true
+          files: |
+            ${{ steps.package.outputs.setup }}
+            ${{ steps.package.outputs.sums }}

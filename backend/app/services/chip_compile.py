@@ -32,18 +32,25 @@ MAX_SOURCE_BYTES = 512 * 1024
 
 
 def _resolve_wasi_sdk() -> Path | None:
-    """Find a wasi-sdk installation. Honours WASI_SDK env var first."""
+    """Find a wasi-sdk installation.
+
+    Order: WASI_SDK_PATH (desktop shell / Windows install) → WASI_SDK
+    (legacy/Docker) → conventional install locations. The desktop bundle
+    ships the Windows build under resources/wasi-sdk so bin/clang.exe plus
+    share/wasi-sysroot resolve without any network access.
+    """
     candidates: list[Path] = []
-    env = os.environ.get("WASI_SDK")
-    if env:
-        candidates.append(Path(env))
+    for env_name in ("WASI_SDK_PATH", "WASI_SDK"):
+        env = os.environ.get(env_name)
+        if env:
+            candidates.append(Path(env))
     # Linux/macOS conventional installs (Docker image lands here)
     candidates.extend([
         Path("/opt/wasi-sdk"),
         Path("/usr/local/wasi-sdk"),
         Path.home() / "wasi-sdk",
     ])
-    # Windows dev convenience (not used in production Docker)
+    # Windows dev convenience
     candidates.extend([Path("C:/wasi-sdk"), Path("C:/Program Files/wasi-sdk")])
 
     for c in candidates:
@@ -55,15 +62,17 @@ def _resolve_wasi_sdk() -> Path | None:
 
 def _resolve_sdk_include() -> Path | None:
     """Locate the directory containing velxio-chip.h."""
+    from app.core import paths
+
+    resolved = paths.sdk_include_dir()
+    if resolved is not None:
+        return resolved
+
     here = Path(__file__).resolve()
-    # Production: backend/sdk/
+    # Production layout: backend/sdk/
     backend_sdk = here.parents[2] / "sdk"
     if (backend_sdk / "velxio-chip.h").is_file():
         return backend_sdk
-    # In Docker the WORKDIR is /app, so /app/sdk:
-    docker_sdk = Path("/app/sdk")
-    if (docker_sdk / "velxio-chip.h").is_file():
-        return docker_sdk
     # Dev fallback: the sandbox copy
     sandbox_sdk = here.parents[3] / "test" / "test_custom_chips" / "sdk" / "include"
     if (sandbox_sdk / "velxio-chip.h").is_file():
