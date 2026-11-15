@@ -25,10 +25,12 @@ concurrency:
 env:
   WASI_SDK_URL: https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0.m-mingw64.tar.gz
   WASI_SDK_SHA256: 723f2c4d00b37cb3d1039c080184c58e8bad71aa6dd1a700ead88a07e0f1f446
-  # SDCC ships only an NSIS setup.exe for win64 (no zip). Silent install with
-  # /S and /D=<dir>; the runner is elevated so the requireAdministrator
-  # manifest is satisfied.
-  SDCC_URL: https://downloads.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe
+  # SDCC ships only an NSIS setup.exe for win64 (no zip). Download it from a
+  # SourceForge mirror, verify SHA256, then extract the payload with 7-Zip
+  # instead of executing the installer (no elevation, no silent-switch guess).
+  SDCC_URL: https://master.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1
+  SDCC_SHA256: 0a165e155a052fcf7c29ea703ee77d5a8eb578eba58279e79e885618dc4b2e1a
+  SDCC_SIZE: "9949266"
   RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
 
 jobs:
@@ -109,17 +111,45 @@ jobs:
         shell: pwsh
         run: |
           $installer = Join-Path $env:RUNNER_TEMP "sdcc-setup.exe"
-          Invoke-WebRequest -Uri $env:SDCC_URL -OutFile $installer
-          $root = "C:\sdcc"
-          if (Test-Path $root) { Remove-Item $root -Recurse -Force }
-          $p = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$root" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "SDCC installer exited $($p.ExitCode)" }
-          if (-not (Test-Path "$root\bin\sdcc.exe")) {
-            throw "SDCC install failed: $root\bin\sdcc.exe missing"
+          $mirrors = @(
+            $env:SDCC_URL,
+            "https://cytranet.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
+            "https://phoenixnap.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
+            "https://netix.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
+            "https://gigenet.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1"
+          )
+          $ok = $false
+          for ($attempt = 1; $attempt -le 3 -and -not $ok; $attempt++) {
+            foreach ($url in $mirrors) {
+              if (-not $url) { continue }
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 300
+                $len = (Get-Item $installer).Length
+                $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+                if ($len -eq [int]$env:SDCC_SIZE -and $hash -eq $env:SDCC_SHA256) {
+                  Write-Host "SDCC verified: $len bytes, sha256=$hash"
+                  $ok = $true
+                  break
+                }
+                Write-Host "Rejected $url (size=$len, sha256=$hash)"
+              } catch {
+                Write-Host "Download failed from $url : $($_.Exception.Message)"
+              }
+            }
+            if (-not $ok) { Start-Sleep -Seconds 10 }
+          }
+          if (-not $ok) { throw "Could not download a valid SDCC 4.6.0 installer" }
+
+          $sevenZip = "C:\Program Files\7-Zip\7z.exe"
+          if (-not (Test-Path $sevenZip)) {
+            $sevenZip = (Get-Command 7z -ErrorAction Stop).Source
           }
           $dst = "frontend/src-tauri/resources/sdcc"
           Get-ChildItem $dst -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          Copy-Item "$root\*" $dst -Recurse -Force
+          & $sevenZip x $installer "-o$dst" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z extraction failed: $LASTEXITCODE" }
+          Remove-Item (Join-Path $dst "doc") -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $dst '$PLUGINSDIR') -Recurse -Force -ErrorAction SilentlyContinue
           if (-not (Test-Path "$dst/bin/sdcc.exe")) {
             throw "SDCC staging failed: bin/sdcc.exe missing"
           }
