@@ -25,10 +25,11 @@ concurrency:
 env:
   WASI_SDK_URL: https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-22/wasi-sdk-22.0.m-mingw64.tar.gz
   WASI_SDK_SHA256: 723f2c4d00b37cb3d1039c080184c58e8bad71aa6dd1a700ead88a07e0f1f446
-  # SDCC ships only an NSIS setup.exe for win64 (no zip). Download it from a
-  # SourceForge mirror, verify SHA256, then extract the payload with 7-Zip
-  # instead of executing the installer (no elevation, no silent-switch guess).
-  SDCC_URL: https://master.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1
+  # SDCC ships only an NSIS setup.exe for win64 (no zip). SourceForge serves
+  # an interstitial/HTML page to CI IPs, so the verified installer is mirrored
+  # on this repository's own release (build-deps-sdcc-4.6.0). SourceForge is
+  # kept as a fallback. The payload is unpacked with 7-Zip instead of executed.
+  SDCC_URL: https://github.com/fggre6/velxio/releases/download/build-deps-sdcc-4.6.0/sdcc-setup.exe
   SDCC_SHA256: 0a165e155a052fcf7c29ea703ee77d5a8eb578eba58279e79e885618dc4b2e1a
   SDCC_SIZE: "9949266"
   RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
@@ -111,30 +112,32 @@ jobs:
         shell: pwsh
         run: |
           $installer = Join-Path $env:RUNNER_TEMP "sdcc-setup.exe"
-          $mirrors = @(
+          $curl = Join-Path $env:WINDIR "System32\curl.exe"
+          if (-not (Test-Path $curl)) { $curl = "curl.exe" }
+          $urls = @(
             $env:SDCC_URL,
+            "https://master.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
             "https://cytranet.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
-            "https://phoenixnap.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
-            "https://netix.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1",
-            "https://gigenet.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1"
+            "https://phoenixnap.dl.sourceforge.net/project/sdcc/sdcc-win64/4.6.0/sdcc-4.6.0-x64-setup.exe?viasf=1"
           )
           $ok = $false
           for ($attempt = 1; $attempt -le 3 -and -not $ok; $attempt++) {
-            foreach ($url in $mirrors) {
+            foreach ($url in $urls) {
               if (-not $url) { continue }
-              try {
-                Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -MaximumRedirection 10 -TimeoutSec 300
-                $len = (Get-Item $installer).Length
-                $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
-                if ($len -eq [int]$env:SDCC_SIZE -and $hash -eq $env:SDCC_SHA256) {
-                  Write-Host "SDCC verified: $len bytes, sha256=$hash"
-                  $ok = $true
-                  break
-                }
-                Write-Host "Rejected $url (size=$len, sha256=$hash)"
-              } catch {
-                Write-Host "Download failed from $url : $($_.Exception.Message)"
+              Remove-Item $installer -Force -ErrorAction SilentlyContinue
+              & $curl -fsSL --retry 2 --retry-delay 3 --connect-timeout 30 --max-time 600 -o $installer $url
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "curl exited $($LASTEXITCODE) for $url"
+                continue
               }
+              $len = (Get-Item $installer).Length
+              $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+              if ($len -eq [int]$env:SDCC_SIZE -and $hash -eq $env:SDCC_SHA256) {
+                Write-Host "SDCC verified: $len bytes, sha256=$hash"
+                $ok = $true
+                break
+              }
+              Write-Host "Rejected $url (size=$len, sha256=$hash)"
             }
             if (-not $ok) { Start-Sleep -Seconds 10 }
           }
