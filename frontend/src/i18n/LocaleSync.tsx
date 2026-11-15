@@ -43,7 +43,14 @@ export function LocaleSync({ children }: Props) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (i18n.language !== target) {
+      // The bundle check matters on desktop: i18n starts at the base locale
+      // (zh-cn) so `i18n.language` already equals the target, yet its lazy
+      // chunk may still be in flight. Without the check the resources would
+      // never be fetched and the UI would sit on the English fallback.
+      if (
+        i18n.language !== target ||
+        !i18n.hasResourceBundle(target, "common")
+      ) {
         await loadLocale(target);
         if (cancelled) return;
         await i18n.changeLanguage(target);

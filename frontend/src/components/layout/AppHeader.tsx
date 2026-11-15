@@ -105,15 +105,22 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ editorMenu, editorToolbar 
   // toolbar strip (Compile / Run / Libraries, board + canvas controls)
   // moved INSIDE this header (`editorToolbar`, 2026-08), that early return
   // dropped the whole strip from the desktop app: 0.4.7 shipped with no
-  // Compile, Run or Libraries button. Render the strip alone, in the same
+  // Compile, Run or Libraries button. Render the strip in the same
   // .header-content > .header-editor-toolbar structure headerStripFit.ts
-  // measures, with an empty .header-left so the whole row is toolbar.
+  // measures.
+  //
+  // The editor MENU BAR (File / Edit / View / Account / Help) has to be
+  // rendered here too: it owns "Open project…" and "Save project", which
+  // are the only save/load entry points in the desktop build. The pro app
+  // mirrors these in a native menu bar (pro/desktop/src-tauri/src/menu.rs);
+  // this shell has none, so dropping `editorMenu` left desktop users with no
+  // way to save or reopen a project.
   if (import.meta.env.VITE_DESKTOP) {
-    if (!editorToolbar) return null;
+    if (!editorToolbar && !editorMenu) return null;
     return (
       <header ref={headerRef} className="app-header app-header--with-toolbar app-header--desktop">
         <div className="header-content">
-          <div className="header-left" />
+          <div className="header-left">{editorMenu}</div>
           <div className="header-editor-toolbar">{editorToolbar}</div>
         </div>
       </header>

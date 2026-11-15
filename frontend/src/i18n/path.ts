@@ -5,21 +5,22 @@
  * locale variant.
  *
  * Routing convention (matches the blog):
- *   - Default locale ("en") is served at the root with NO prefix.
- *   - Non-default locales mount under `/<locale>/...`.
+ *   - BASE_LOCALE is served at the root with NO prefix (web: "en",
+ *     desktop: "zh-cn").
+ *   - Every other locale mounts under `/<locale>/...`.
  */
 
-import { LOCALES, DEFAULT_LOCALE, type Locale, isLocale } from "./config";
+import { LOCALES, BASE_LOCALE, DEFAULT_LOCALE, type Locale, isLocale } from "./config";
 
-/** Detect the locale segment of a pathname. Returns DEFAULT_LOCALE if none. */
+/** Detect the locale segment of a pathname. Returns BASE_LOCALE if none. */
 export function getLocaleFromPath(pathname: string): Locale {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments.length === 0) return DEFAULT_LOCALE;
+  if (segments.length === 0) return BASE_LOCALE;
   const first = segments[0].toLowerCase();
-  if (isLocale(first) && first !== DEFAULT_LOCALE) {
+  if (isLocale(first) && first !== BASE_LOCALE) {
     return first;
   }
-  return DEFAULT_LOCALE;
+  return BASE_LOCALE;
 }
 
 /**
@@ -30,7 +31,7 @@ export function stripLocaleFromPath(pathname: string): string {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return "/";
   const first = segments[0].toLowerCase();
-  if (isLocale(first) && first !== DEFAULT_LOCALE) {
+  if (isLocale(first) && first !== BASE_LOCALE) {
     const rest = segments.slice(1);
     return rest.length === 0 ? "/" : `/${rest.join("/")}`;
   }
@@ -43,7 +44,7 @@ export function stripLocaleFromPath(pathname: string): string {
  */
 export function localizedPath(path: string, locale: Locale): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
-  if (locale === DEFAULT_LOCALE) return cleanPath;
+  if (locale === BASE_LOCALE) return cleanPath;
   return `/${locale}${cleanPath === "/" ? "" : cleanPath}`;
 }
 
@@ -55,7 +56,7 @@ export function switchLocale(currentPathname: string, target: Locale): string {
 
 /** Comma-listed regex pattern of non-default locales for React Router. */
 export const NON_DEFAULT_LOCALE_PATTERN = LOCALES.filter(
-  l => l !== DEFAULT_LOCALE
+  l => l !== BASE_LOCALE
 ).join("|");
 
 /**

@@ -24,8 +24,24 @@ export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = "en";
 
+/**
+ * Locale served WITHOUT a URL prefix in this build.
+ *
+ * The web build keeps English at the root (`/editor`) for SEO; the desktop
+ * bundle ships Chinese-first, so `/editor` resolves to zh-cn there and the
+ * other locales mount under `/<locale>/...` exactly as before.
+ */
+export const BASE_LOCALE: Locale = import.meta.env?.VITE_DESKTOP
+  ? "zh-cn"
+  : DEFAULT_LOCALE;
+
 export const NON_DEFAULT_LOCALES = LOCALES.filter(
   (l): l is Exclude<Locale, "en"> => l !== DEFAULT_LOCALE
+);
+
+/** Locales mounted under `/<locale>/` in this build — everything but BASE. */
+export const PREFIXED_LOCALES: Locale[] = LOCALES.filter(
+  (l) => l !== BASE_LOCALE
 );
 
 export type LocaleMeta = {

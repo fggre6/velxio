@@ -28,7 +28,7 @@ import enSeo from "./locales/en/seo.json";
 import enSeo2 from "./locales/en/seo2.json";
 import enSeo3 from "./locales/en/seo3.json";
 import enSeo4 from "./locales/en/seo4.json";
-import { DEFAULT_LOCALE, LOCALES, type Locale } from "./config";
+import { DEFAULT_LOCALE, BASE_LOCALE, LOCALES, type Locale } from "./config";
 
 /**
  * Deep merge for locale resource files. The namespace used to be built
@@ -90,15 +90,11 @@ void i18n
         },
       },
     },
-    // Start at the default locale (its resources are inlined above). The
-    // active locale is then driven from the URL by LocaleSync after mount,
-    // which lazy-loads the matching bundle and performs a real
-    // changeLanguage — the event that makes subscribed components re-render.
-    // Seeding `lng` to the URL locale here instead left direct loads of a
-    // non-default URL stuck on the English fallback, because LocaleSync's
-    // `i18n.language !== target` guard was already satisfied so the bundle
-    // was never fetched.
-    lng: DEFAULT_LOCALE,
+    // Start at the base locale for this build: "en" on the web (inlined
+    // above), "zh-cn" in the desktop bundle. On desktop the zh-cn chunk is
+    // fetched right after init (see below) so the first paint is localized;
+    // LocaleSync then only has to sync the URL-derived locale on navigation.
+    lng: BASE_LOCALE,
     fallbackLng: DEFAULT_LOCALE,
     supportedLngs: SUPPORTED_LANGS,
     // Our locale codes are lowercase with a lowercase region ("zh-cn",
@@ -122,6 +118,14 @@ void i18n
       caches: [], // we manage the cookie in src/i18n/cookie.ts
     },
   });
+
+// Desktop ships Chinese-first: BASE_LOCALE is zh-cn there, whose bundle is a
+// lazy chunk (only English is inlined). Fetch it now so the first paint is
+// already localized — LocaleSync cannot do it, because `i18n.language`
+// already equals its target and its `!==` guard would skip the load.
+if (BASE_LOCALE !== DEFAULT_LOCALE) {
+  void loadLocale(BASE_LOCALE);
+}
 
 /**
  * Lazy-load a non-English locale's bundle and register it with i18next.

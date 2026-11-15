@@ -11,7 +11,7 @@ import { ExampleDetailPage } from './pages/ExampleDetailPage';
 import { ExampleEditorPage } from './pages/ExampleEditorPage';
 import { ImageToCodePage } from './pages/ImageToCodePage';
 import { LocaleSync } from './i18n/LocaleSync';
-import { NON_DEFAULT_LOCALES } from './i18n/config';
+import { PREFIXED_LOCALES } from './i18n/config';
 import { useProRoutes, useProRoutesSettled } from './lib/proRoutes';
 import { triggerSessionCheck } from './lib/proSession';
 import { MessageDialogHost } from './components/ui/MessageDialogHost';
@@ -118,7 +118,7 @@ function App() {
             so React Router doesn't accidentally swallow real top-level
             paths like `/circuit-simulator` as a locale segment.
           */}
-          {NON_DEFAULT_LOCALES.map((locale) => (
+          {PREFIXED_LOCALES.map((locale) => (
             <Route key={`locale-${locale}`} path={`/${locale}`}>
               {allRoutes.map((r) =>
                 r.index ? (
@@ -134,9 +134,13 @@ function App() {
             </Route>
           ))}
 
-          {/* `/en/...` is the default locale spelled out — redirect to the
-              canonical prefix-free path instead of rendering a blank page. */}
-          <Route path="/en/*" element={<EnPrefixRedirect />} />
+          {/* `/en/...` is the web build's default locale spelled out —
+              redirect to the canonical prefix-free path. On desktop "en" is
+              a prefixed locale (zh-cn is the prefix-free base), so the
+              branch above must render instead of redirecting. */}
+          {!import.meta.env.VITE_DESKTOP && (
+            <Route path="/en/*" element={<EnPrefixRedirect />} />
+          )}
         </Routes>
       </LocaleSync>
       {/* Global alert() replacement — opened from anywhere (React or plain
